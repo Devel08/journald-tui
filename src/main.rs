@@ -24,8 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // We'll currently handle only 100 logs
     let (tx, mut rx) = tokio::sync::mpsc::channel::<JournalEntry>(100);
-    tokio::spawn(async move {
-        start_log_stream(tx).await;
+    std::thread::spawn(move || {
+        start_log_stream(tx);
     });
 
     let mut logs: Vec<JournalEntry> = Vec::new();

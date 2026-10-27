@@ -2,7 +2,7 @@
   <h1><code>journald-tui</code></h1>
 
   <p>
-    <strong>A lightweight, TUI for viewing and navigating systemd-journald logs in real time.</strong>
+    <strong>A lightweight TUI for viewing and navigating systemd-journald logs in real time.</strong>
   </p>
   <p>🚧 Work in progress - more to come!</p>
 </div>
@@ -10,6 +10,7 @@
 ### Requirements
 * A linux distribution with systemd
 * Rust (`cargo`,`rustc`)
+* `systemd-libs` or whatever your distro calls it
 
 ### Compile and run
 ```

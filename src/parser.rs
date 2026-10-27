@@ -1,25 +1,67 @@
 use crate::model::JournalEntry;
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
+use systemd::journal::OpenOptions;
 
-/// Start journalctl and stream the parsed json and send it to the mpsc
-pub async fn start_log_stream(tx: tokio::sync::mpsc::Sender<JournalEntry>) {
-    // Stream the last 100 entries
-    let mut child = Command::new("journalctl")
-        .args(["-o", "json", "--follow", "-n", "100"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to start journalctl process");
+fn to_entry(entry: &std::collections::BTreeMap<String, String>) -> JournalEntry {
+    let get = |key: &str| entry.get(key).cloned();
 
-    let stdout = child.stdout.take().expect("Failed to open stdout pipe");
+    JournalEntry {
+        timestamp: get("__REALTIME_TIMESTAMP").unwrap_or_default(),
+        message: get("MESSAGE").unwrap_or_default(),
+        systemd_unit: get("_SYSTEMD_UNIT"),
+        process_name: get("_COMM"),
+        priority: get("PRIORITY"),
+        pid: get("_PID"),
+        hostname: get("_HOSTNAME"),
+    }
+}
 
-    let mut reader = BufReader::new(stdout).lines();
+pub fn start_log_stream(tx: tokio::sync::mpsc::Sender<JournalEntry>) {
+    let mut journal = match OpenOptions::default().open() {
+        Ok(journal) => journal,
+        Err(err) => {
+            //TODO: .map_err() that error to something
+            // when we implement error handling
+            // printing because of clippy
+            eprintln!("Failed to open systemd journal: {err}");
+            return;
+        }
+    };
 
-    // Whenever an entry pops up, send it to the mpsc
-    while let Ok(Some(line)) = reader.next_line().await {
-        if let Ok(entry) = serde_json::from_str::<JournalEntry>(&line) {
-            let _ = tx.send(entry).await;
+    if let Err(err) = journal.seek_tail() {
+        //TODO: .map_err() that error to something
+        // when we implement error handling
+        // printing because of clippy
+        eprintln!("Failed to seek to journal tail: {err}");
+        return;
+    }
+
+    // TODO: parse with clap-rs
+    for _ in 0..100 {
+        if !matches!(journal.previous(), Ok(1)) {
+            break;
+        }
+    }
+
+    loop {
+        let entry_res = match journal.next_entry() {
+            Ok(Some(entry)) => Ok(Some(entry)),
+            Ok(None) => journal.await_next_entry(None),
+            Err(err) => Err(err),
+        };
+
+        match entry_res {
+            Ok(Some(entry)) => {
+                if tx.blocking_send(to_entry(&entry)).is_err() {
+                    //TODO: map error when error handling
+                    break;
+                }
+            }
+            Ok(None) => continue,
+            Err(err) => {
+                //TODO: map error when error handling
+                eprintln!("Journal error: {err}");
+                break;
+            }
         }
     }
 }
