@@ -35,7 +35,7 @@ pub fn start_log_stream(tx: tokio::sync::mpsc::Sender<JournalEntry>) {
         return;
     }
 
-    // TODO: parse with clap-rs
+    // TODO: parse with clap-rs?
     for _ in 0..100 {
         if !matches!(journal.previous(), Ok(1)) {
             break;
