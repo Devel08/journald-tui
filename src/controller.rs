@@ -147,39 +147,45 @@ impl Controller {
                 })?;
                 should_render = false;
             }
-            if event::poll(Duration::from_millis(50))?
-                && let Event::Key(key) = event::read()?
-            {
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Down => {
-                        let i = match self.table_state.selected() {
-                            Some(i) => {
-                                if i >= self.logs.len().saturating_sub(1) {
-                                    i
-                                } else {
-                                    i + 1
+            if event::poll(Duration::from_millis(50))? {
+                match event::read()? {
+                    Event::Key(key) => match key.code {
+                        KeyCode::Char('q') => break,
+                        KeyCode::Down => {
+                            let i = match self.table_state.selected() {
+                                Some(i) => {
+                                    if i >= self.logs.len().saturating_sub(1) {
+                                        i
+                                    } else {
+                                        i + 1
+                                    }
                                 }
-                            }
-                            None => 0,
-                        };
-                        self.table_state.select(Some(i));
-                        self.scroll_state = self.scroll_state.position(i);
-                        should_render = true;
-                    }
-                    KeyCode::Up => {
-                        let i = match self.table_state.selected() {
-                            Some(i) => {
-                                if i == 0 {
-                                    0
-                                } else {
-                                    i - 1
+                                None => 0,
+                            };
+                            self.table_state.select(Some(i));
+                            self.scroll_state = self.scroll_state.position(i);
+                            should_render = true;
+                        }
+                        KeyCode::Up => {
+                            let i = match self.table_state.selected() {
+                                Some(i) => {
+                                    if i == 0 {
+                                        0
+                                    } else {
+                                        i - 1
+                                    }
                                 }
-                            }
-                            None => 0,
-                        };
-                        self.table_state.select(Some(i));
-                        self.scroll_state = self.scroll_state.position(i);
+                                None => 0,
+                            };
+                            self.table_state.select(Some(i));
+                            self.scroll_state = self.scroll_state.position(i);
+                            should_render = true;
+                        }
+                        _ => {}
+                    },
+                    Event::Resize(_, _) => {
+                        terminal.autoresize()?;
+                        terminal.clear()?;
                         should_render = true;
                     }
                     _ => {}
