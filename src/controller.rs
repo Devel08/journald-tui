@@ -87,20 +87,6 @@ impl Controller {
                 terminal.draw(|f| {
                     let size = f.area();
 
-                    //Make rows out of the logs data
-                    let mut rows = Vec::new();
-                    for log in &self.logs {
-                        let unit = log.systemd_unit.as_deref().unwrap_or("unknown");
-                        let process = log.process_name.as_deref().unwrap_or("unknown");
-                        let message = &log.message;
-
-                        rows.push(Row::new(vec![
-                            Cell::from(unit.to_string()),
-                            Cell::from(process.to_string()),
-                            Cell::from(message.to_string()),
-                        ]));
-                    }
-
                     let header_row = Row::new(vec![
                         Cell::from("UNIT"),
                         Cell::from("PROCESS"),
@@ -121,11 +107,25 @@ impl Controller {
                         ))
                         .borders(Borders::ALL);
 
-                    let table = Table::new(rows, widths)
-                        .header(header_row)
-                        .block(block)
-                        .row_highlight_style(Style::default().bg(Color::DarkGray))
-                        .highlight_symbol(">> ");
+                    let table = Table::new(
+                        //Make rows out of the logs data
+                        self.logs.iter().map(|log| {
+                            let unit = log.systemd_unit.as_deref().unwrap_or("unknown");
+                            let process = log.process_name.as_deref().unwrap_or("unknown");
+                            let message = &log.message;
+
+                            Row::new(vec![
+                                Cell::from(unit.to_string()),
+                                Cell::from(process.to_string()),
+                                Cell::from(message.to_string()),
+                            ])
+                        }),
+                        widths,
+                    )
+                    .header(header_row)
+                    .block(block)
+                    .row_highlight_style(Style::default().bg(Color::DarkGray))
+                    .highlight_symbol(">> ");
 
                     //The table will be 33 rows (for 30 entries), so that the left out space can
                     //be used for other stuff, like metadata when clicked on
