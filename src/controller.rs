@@ -90,10 +90,19 @@ impl Controller {
                 let process = log.process_name.as_deref().unwrap_or("unknown");
                 let message = &log.message;
 
+                // https://www.rfc-editor.org/info/rfc5424/
+                let log_style = match log.priority.as_deref() {
+                    Some("0") | Some("1") | Some("2") | Some("3") => {
+                        Style::default().fg(Color::Red)
+                    }
+                    Some("4") => Style::default().fg(Color::LightYellow),
+                    _ => Style::default().fg(Color::Gray),
+                };
+
                 Row::new(vec![
                     Cell::from(unit.to_string()),
                     Cell::from(process.to_string()),
-                    Cell::from(message.to_string()),
+                    Cell::from(message.to_string()).style(log_style),
                 ])
             }),
             widths,
