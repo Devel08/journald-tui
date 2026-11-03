@@ -8,7 +8,7 @@ use crossterm::{
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{
         Block, Borders, Cell, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
@@ -60,9 +60,7 @@ impl Controller {
         Ok(())
     }
 
-    pub fn draw_table(&mut self, f: &mut Frame) {
-        let size = f.area();
-
+    pub fn draw_table(&mut self, f: &mut Frame, area: Rect) {
         let header_row = Row::new(vec![
             Cell::from("UNIT"),
             Cell::from("PROCESS"),
@@ -112,15 +110,7 @@ impl Controller {
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol(">> ");
 
-        //The table will be 33 rows (for 30 entries), so that the left out space can
-        //be used for other stuff, like metadata when clicked on
-        //some log
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(33), Constraint::Min(0)])
-            .split(size);
-
-        let table_area = chunks[0];
+        let table_area = area;
 
         f.render_stateful_widget(table, table_area, &mut self.table_state);
 
@@ -200,7 +190,17 @@ impl Controller {
 
             if should_render {
                 terminal.draw(|f| {
-                    self.draw_table(f);
+                    let size = f.area();
+
+                    //The table will be 33 rows (for 30 entries), so that the left out space can
+                    //be used for other stuff, like metadata when clicked on
+                    //some log
+                    let chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([Constraint::Length(33), Constraint::Min(0)])
+                        .split(size);
+
+                    self.draw_table(f, chunks[0]);
                 })?;
                 should_render = false;
             }
