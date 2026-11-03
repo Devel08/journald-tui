@@ -197,7 +197,7 @@ impl Controller {
                     //some log
                     let chunks = Layout::default()
                         .direction(Direction::Vertical)
-                        .constraints([Constraint::Length(33), Constraint::Min(0)])
+                        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
                         .split(size);
 
                     self.draw_table(f, chunks[0]);
