@@ -10,9 +10,10 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
+    text::{Line, Span},
     widgets::{
-        Block, Borders, Cell, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
-        TableState,
+        Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        Table, TableState, Wrap,
     },
 };
 use std::io::{self, Stdout};
@@ -124,6 +125,71 @@ impl Controller {
         self.scroll_state = self.scroll_state.content_length(self.logs.len());
     }
 
+    pub fn draw_metadata(&mut self, f: &mut Frame, area: Rect) {
+        let selected_index = self.table_state.selected().unwrap_or(0);
+
+        let log = &self.logs[selected_index];
+
+        // TODO: Add more fields?
+        let process = log.process_name.as_deref().unwrap_or("unknown");
+        let message = &log.message;
+        let pid = log.pid.as_deref().unwrap_or("unknown");
+        let hostname = log.hostname.as_deref().unwrap_or("unknown");
+
+        // https://www.rfc-editor.org/info/rfc5424/
+        let type_str = match log.priority.as_deref() {
+            Some("0") => "Emergency",
+            Some("1") => "Alert",
+            Some("2") => "Critical",
+            Some("3") => "Error",
+            Some("4") => "Warning",
+            Some("5") => "Notice",
+            Some("6") => "Informational",
+            Some("7") => "Debug",
+            _ => "",
+        };
+
+        let connecting_block =
+            Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM);
+
+        let inner_area = connecting_block.inner(area);
+        f.render_widget(connecting_block, area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+            .split(inner_area);
+
+        let label_style = Style::default().fg(Color::Cyan);
+
+        let metadata = vec![
+            Line::from(vec![
+                Span::styled("PID: ", label_style),
+                Span::raw(pid),
+                Span::raw("      "),
+                Span::styled("Host: ", label_style),
+                Span::raw(hostname),
+            ]),
+            Line::from(vec![
+                Span::styled("Type: ", label_style),
+                Span::raw(type_str),
+                Span::raw("     "),
+                Span::styled("Process: ", label_style),
+                Span::raw(process),
+            ]),
+        ];
+        f.render_widget(Paragraph::new(metadata), chunks[0]);
+
+        let msg_header = Span::styled("Message: ", label_style);
+        let msg_body = Span::raw(message);
+
+        // Multiline message
+        let message =
+            Paragraph::new(Line::from(vec![msg_header, msg_body])).wrap(Wrap { trim: true });
+
+        f.render_widget(message, chunks[1]);
+    }
+
     // Returns a `LoopAction` enum
     // Continue -> the event loop continues and passes render state
     // Quit -> user pressed `q`, breaks the event loop.
@@ -197,10 +263,11 @@ impl Controller {
                     //some log
                     let chunks = Layout::default()
                         .direction(Direction::Vertical)
-                        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+                        .constraints([Constraint::Percentage(70), Constraint::Percentage(5)])
                         .split(size);
 
                     self.draw_table(f, chunks[0]);
+                    self.draw_metadata(f, chunks[1]);
                 })?;
                 should_render = false;
             }
