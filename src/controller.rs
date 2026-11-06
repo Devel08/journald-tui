@@ -127,7 +127,9 @@ impl Controller {
 
     pub fn draw_metadata(&mut self, f: &mut Frame, area: Rect) {
         let selected_index = self.table_state.selected().unwrap_or(0);
-
+        if self.logs.is_empty() {
+            return;
+        }
         let log = &self.logs[selected_index];
 
         // TODO: Add more fields?
