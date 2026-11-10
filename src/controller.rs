@@ -279,7 +279,7 @@ impl Controller {
                         .direction(Direction::Vertical)
                         .constraints([
                             Constraint::Percentage(70),
-                            Constraint::Percentage(5),
+                            Constraint::Length(3),
                             Constraint::Min(0),
                             Constraint::Length(1),
                             Constraint::Length(1),
