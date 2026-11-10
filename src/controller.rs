@@ -9,7 +9,7 @@ use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
@@ -192,6 +192,18 @@ impl Controller {
         f.render_widget(message, chunks[1]);
     }
 
+    pub fn draw_status_bar(&mut self, f: &mut Frame, area: Rect) {
+        let status_bar = Paragraph::new(" [↑] Up  [↓] Down  [/] Local search  [q] Quit ")
+            .block(Block::default())
+            .style(
+                Style::default()
+                    .bg(Color::Gray)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            );
+        f.render_widget(status_bar, area);
+    }
+
     // Returns a `LoopAction` enum
     // Continue -> the event loop continues and passes render state
     // Quit -> user pressed `q`, breaks the event loop.
@@ -265,11 +277,24 @@ impl Controller {
                     //some log
                     let chunks = Layout::default()
                         .direction(Direction::Vertical)
-                        .constraints([Constraint::Percentage(70), Constraint::Percentage(5)])
+                        .constraints([
+                            Constraint::Percentage(70),
+                            Constraint::Percentage(5),
+                            Constraint::Min(0),
+                            Constraint::Length(1),
+                            Constraint::Length(1),
+                        ])
                         .split(size);
+
+                    // 0 - table
+                    // 1 - metadata
+                    // 2 - space that we'll use up for something
+                    // 3 - status bar
+                    // 4 - search(?)
 
                     self.draw_table(f, chunks[0]);
                     self.draw_metadata(f, chunks[1]);
+                    self.draw_status_bar(f, chunks[3]);
                 })?;
                 should_render = false;
             }
