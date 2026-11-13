@@ -8,7 +8,7 @@ use crossterm::{
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -21,6 +21,8 @@ use std::time::Duration;
 use tokio::sync::mpsc::Receiver;
 
 pub struct Controller {
+    search_query: String,
+    is_searching: bool,
     logs: Vec<JournalEntry>,
     rx: Receiver<JournalEntry>,
     table_state: TableState,
@@ -35,6 +37,8 @@ enum LoopAction {
 impl Controller {
     pub fn new(rx: Receiver<JournalEntry>) -> Self {
         Self {
+            search_query: String::new(),
+            is_searching: false,
             logs: Vec::new(),
             rx,
             table_state: TableState::default(),
@@ -84,26 +88,29 @@ impl Controller {
 
         let table = Table::new(
             //Make rows out of the logs data
-            self.logs.iter().map(|log| {
-                let unit = log.systemd_unit.as_deref().unwrap_or("unknown");
-                let process = log.process_name.as_deref().unwrap_or("unknown");
-                let message = &log.message;
+            self.logs
+                .iter()
+                .filter(|log| {
+                    self.search_query.is_empty() || log.message.contains(&self.search_query)
+                })
+                .map(|log| {
+                    let unit = log.systemd_unit.as_deref().unwrap_or("unknown");
+                    let process = log.process_name.as_deref().unwrap_or("unknown");
+                    let message = &log.message;
 
-                // https://www.rfc-editor.org/info/rfc5424/
-                let log_style = match log.priority.as_deref() {
-                    Some("0") | Some("1") | Some("2") | Some("3") => {
-                        Style::default().fg(Color::Red)
-                    }
-                    Some("4") => Style::default().fg(Color::LightYellow),
-                    _ => Style::default().fg(Color::Gray),
-                };
+                    // https://www.rfc-editor.org/info/rfc5424/
+                    let log_style = match log.priority.as_deref() {
+                        Some("0" | "1" | "2" | "3") => Style::default().fg(Color::Red),
+                        Some("4") => Style::default().fg(Color::LightYellow),
+                        _ => Style::default().fg(Color::Gray),
+                    };
 
-                Row::new(vec![
-                    Cell::from(unit.to_string()),
-                    Cell::from(process.to_string()),
-                    Cell::from(message.to_string()).style(log_style),
-                ])
-            }),
+                    Row::new(vec![
+                        Cell::from(unit.to_string()),
+                        Cell::from(process.to_string()),
+                        Cell::from(message.to_string()).style(log_style),
+                    ])
+                }),
             widths,
         )
         .header(header_row)
@@ -204,49 +211,105 @@ impl Controller {
         f.render_widget(status_bar, area);
     }
 
+    pub fn draw_search(&mut self, f: &mut Frame, area: Rect) {
+        let text = format!("> {}", self.search_query);
+        let status_bar = Paragraph::new(text).block(Block::default());
+        f.render_widget(status_bar, area);
+
+        if self.is_searching {
+            f.set_cursor_position(Position::new(
+                area.x + self.search_query.chars().count() as u16 + 2,
+                area.y,
+            ));
+        }
+    }
+
     // Returns a `LoopAction` enum
     // Continue -> the event loop continues and passes render state
     // Quit -> user pressed `q`, breaks the event loop.
     fn handle_keystrokes(&mut self, key: KeyEvent) -> LoopAction {
-        match key.code {
-            KeyCode::Char('q') => LoopAction::Quit,
-            KeyCode::Down => {
-                let i = match self.table_state.selected() {
-                    Some(i) => {
-                        if i >= self.logs.len().saturating_sub(1) {
-                            i
-                        } else {
-                            i + 1
-                        }
+        //Search mode
+        if self.is_searching {
+            match key.code {
+                KeyCode::Char(c) => {
+                    self.search_query.push(c);
+                    LoopAction::Continue {
+                        should_render: true,
                     }
-                    None => 0,
-                };
-                self.table_state.select(Some(i));
-                self.scroll_state = self.scroll_state.position(i);
-                LoopAction::Continue {
-                    should_render: true,
                 }
-            }
-            KeyCode::Up => {
-                let i = match self.table_state.selected() {
-                    Some(i) => {
-                        if i == 0 {
-                            0
-                        } else {
-                            i - 1
-                        }
+                KeyCode::Backspace => {
+                    self.search_query.pop();
+                    LoopAction::Continue {
+                        should_render: true,
                     }
-                    None => 0,
-                };
-                self.table_state.select(Some(i));
-                self.scroll_state = self.scroll_state.position(i);
-                LoopAction::Continue {
-                    should_render: true,
                 }
+                KeyCode::Enter => {
+                    // we'll implement searching here
+                    self.is_searching = false;
+                    LoopAction::Continue {
+                        should_render: true,
+                    }
+                }
+                KeyCode::Esc => {
+                    self.search_query.clear();
+                    self.is_searching = false;
+                    LoopAction::Continue {
+                        should_render: true,
+                    }
+                }
+                _ => LoopAction::Continue {
+                    should_render: false,
+                },
             }
-            _ => LoopAction::Continue {
-                should_render: false,
-            },
+        } else {
+            match key.code {
+                KeyCode::Char('q') => LoopAction::Quit,
+                KeyCode::Char('/') => {
+                    // delete the old query
+                    self.search_query.clear();
+                    self.is_searching = true;
+                    LoopAction::Continue {
+                        should_render: true,
+                    }
+                }
+                KeyCode::Down => {
+                    let i = match self.table_state.selected() {
+                        Some(i) => {
+                            if i >= self.logs.len().saturating_sub(1) {
+                                i
+                            } else {
+                                i + 1
+                            }
+                        }
+                        None => 0,
+                    };
+                    self.table_state.select(Some(i));
+                    self.scroll_state = self.scroll_state.position(i);
+                    LoopAction::Continue {
+                        should_render: true,
+                    }
+                }
+                KeyCode::Up => {
+                    let i = match self.table_state.selected() {
+                        Some(i) => {
+                            if i == 0 {
+                                0
+                            } else {
+                                i - 1
+                            }
+                        }
+                        None => 0,
+                    };
+                    self.table_state.select(Some(i));
+                    self.scroll_state = self.scroll_state.position(i);
+                    LoopAction::Continue {
+                        should_render: true,
+                    }
+                }
+                _ => LoopAction::Continue {
+                    should_render: false,
+                },
+            }
         }
     }
 
@@ -295,6 +358,9 @@ impl Controller {
                     self.draw_table(f, chunks[0]);
                     self.draw_metadata(f, chunks[1]);
                     self.draw_status_bar(f, chunks[3]);
+                    if self.is_searching {
+                        self.draw_search(f, chunks[4]);
+                    }
                 })?;
                 should_render = false;
             }
