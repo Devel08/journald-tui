@@ -134,10 +134,14 @@ impl Controller {
 
     pub fn draw_metadata(&mut self, f: &mut Frame, area: Rect) {
         let selected_index = self.table_state.selected().unwrap_or(0);
-        if self.logs.is_empty() {
+        let Some(log) = self
+            .logs
+            .iter()
+            .filter(|log| self.search_query.is_empty() || log.message.contains(&self.search_query))
+            .nth(selected_index)
+        else {
             return;
-        }
-        let log = &self.logs[selected_index];
+        };
 
         // TODO: Add more fields?
         let process = log.process_name.as_deref().unwrap_or("unknown");
@@ -233,12 +237,16 @@ impl Controller {
             match key.code {
                 KeyCode::Char(c) => {
                     self.search_query.push(c);
+                    self.table_state.select(Some(0));
+                    self.scroll_state = self.scroll_state.position(0);
                     LoopAction::Continue {
                         should_render: true,
                     }
                 }
                 KeyCode::Backspace => {
                     self.search_query.pop();
+                    self.table_state.select(Some(0));
+                    self.scroll_state = self.scroll_state.position(0);
                     LoopAction::Continue {
                         should_render: true,
                     }
@@ -253,6 +261,8 @@ impl Controller {
                 KeyCode::Esc => {
                     self.search_query.clear();
                     self.is_searching = false;
+                    self.table_state.select(Some(0));
+                    self.scroll_state = self.scroll_state.position(0);
                     LoopAction::Continue {
                         should_render: true,
                     }
@@ -268,14 +278,24 @@ impl Controller {
                     // delete the old query
                     self.search_query.clear();
                     self.is_searching = true;
+                    self.table_state.select(Some(0));
+                    self.scroll_state = self.scroll_state.position(0);
                     LoopAction::Continue {
                         should_render: true,
                     }
                 }
                 KeyCode::Down => {
+                    let filtered_count = self
+                        .logs
+                        .iter()
+                        .filter(|log| {
+                            self.search_query.is_empty() || log.message.contains(&self.search_query)
+                        })
+                        .count();
+
                     let i = match self.table_state.selected() {
                         Some(i) => {
-                            if i >= self.logs.len().saturating_sub(1) {
+                            if i >= filtered_count.saturating_sub(1) {
                                 i
                             } else {
                                 i + 1
