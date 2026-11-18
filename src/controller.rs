@@ -17,12 +17,21 @@ use ratatui::{
     },
 };
 use std::io::{self, Stdout};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
+use std::sync::Mutex;
+
 use std::time::Duration;
+
 use tokio::sync::mpsc::Receiver;
 
 pub struct Controller {
     search_query: String,
     is_searching: bool,
+    global_filter: Arc<Mutex<Option<String>>>,
     logs: Vec<JournalEntry>,
     rx: Receiver<JournalEntry>,
     table_state: TableState,
@@ -39,10 +48,46 @@ impl Controller {
         Self {
             search_query: String::new(),
             is_searching: false,
+            global_filter: Arc::new(Mutex::new(None)),
             logs: Vec::new(),
             rx,
             table_state: TableState::default(),
             scroll_state: ScrollbarState::default(),
+        }
+    }
+
+    pub fn global_filter(&self) -> Arc<Mutex<Option<String>>> {
+        self.global_filter.clone()
+    }
+
+    // search globally based on current text
+    fn start_global_search(&mut self) {
+        if self.search_query.is_empty() {
+            return;
+        }
+        *self.global_filter.lock().unwrap() = Some(self.search_query.clone());
+        self.search_query.clear();
+        self.logs.clear();
+        while self.rx.try_recv().is_ok() {}
+        self.table_state.select(Some(0));
+        self.scroll_state = self.scroll_state.position(0);
+    }
+
+    // back to last 100
+    fn reset_to_local(&mut self) {
+        *self.global_filter.lock().unwrap() = None;
+        self.search_query.clear();
+        self.logs.clear();
+        while self.rx.try_recv().is_ok() {}
+        self.table_state.select(Some(0));
+        self.scroll_state = self.scroll_state.position(0);
+    }
+
+    fn toggle_global(&mut self) {
+        if self.global_filter.lock().unwrap().is_some() {
+            self.reset_to_local();
+        } else {
+            self.start_global_search();
         }
     }
 
@@ -204,14 +249,15 @@ impl Controller {
     }
 
     pub fn draw_status_bar(&mut self, f: &mut Frame, area: Rect) {
-        let status_bar = Paragraph::new(" [↑] Up  [↓] Down  [/] Local search  [q] Quit ")
-            .block(Block::default())
-            .style(
-                Style::default()
-                    .bg(Color::Gray)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            );
+        let status_bar =
+            Paragraph::new(" [↑] Up  [↓] Down  [/] Search [G] Global search mode  [q] Quit ")
+                .block(Block::default())
+                .style(
+                    Style::default()
+                        .bg(Color::Gray)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
+                );
         f.render_widget(status_bar, area);
     }
 
@@ -274,6 +320,12 @@ impl Controller {
         } else {
             match key.code {
                 KeyCode::Char('q') => LoopAction::Quit,
+                KeyCode::Char('g') => {
+                    self.toggle_global();
+                    LoopAction::Continue {
+                        should_render: true,
+                    }
+                }
                 KeyCode::Char('/') => {
                     // delete the old query
                     self.search_query.clear();
@@ -345,7 +397,7 @@ impl Controller {
                 self.logs.push(entry);
                 // Maybe we should parse that with clap-rs
                 // and make 100 default if argument is not provided
-                if self.logs.len() > 100 {
+                if self.global_filter.lock().unwrap().is_none() && self.logs.len() > 100 {
                     self.logs.remove(0);
                 }
                 should_render = true;
