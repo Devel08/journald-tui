@@ -17,10 +17,7 @@ use ratatui::{
     },
 };
 use std::io::{self, Stdout};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 
 use std::sync::Mutex;
 
