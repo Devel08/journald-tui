@@ -21,8 +21,8 @@ use std::sync::Arc;
 
 use std::sync::Mutex;
 
+use jiff::{Timestamp, tz::TimeZone};
 use std::time::Duration;
-
 use tokio::sync::mpsc::Receiver;
 
 pub struct Controller {
@@ -109,6 +109,7 @@ impl Controller {
 
     pub fn draw_table(&mut self, f: &mut Frame, area: Rect) {
         let header_row = Row::new(vec![
+            Cell::from("TIMESTAMP"),
             Cell::from("UNIT"),
             Cell::from("PROCESS"),
             Cell::from("MESSAGE"),
@@ -116,10 +117,12 @@ impl Controller {
         .style(Style::default().bg(Color::LightBlue).fg(Color::Black));
 
         let widths = [
-            Constraint::Length(30),
-            Constraint::Length(30),
-            Constraint::Min(10),
+            Constraint::Length(19), 
+            Constraint::Max(25),    
+            Constraint::Length(16), 
+            Constraint::Fill(1),
         ];
+
 
         let block = Block::default()
             .title(format!(
@@ -127,6 +130,8 @@ impl Controller {
                 self.logs.len()
             ))
             .borders(Borders::ALL);
+
+        let tz = TimeZone::system();
 
         let table = Table::new(
             //Make rows out of the logs data
@@ -136,6 +141,20 @@ impl Controller {
                     self.search_query.is_empty() || log.message.contains(&self.search_query)
                 })
                 .map(|log| {
+
+                    // Convert the unix epoch timestamp into human readable one
+                    let time = log
+                        .timestamp
+                        .parse::<i64>()
+                        .ok()
+                        .and_then(|us| Timestamp::from_microsecond(us).ok())
+                        .map(|ts| {
+                            ts.to_zoned_datetime(tz.clone())
+                                .strftime("%d.%m.%Y %H:%M:%S")
+                                .to_string()
+                        })
+                        .unwrap_or_else(|| "unknown".to_string());
+
                     let unit = log.systemd_unit.as_deref().unwrap_or("unknown");
                     let process = log.process_name.as_deref().unwrap_or("unknown");
                     let message = &log.message;
@@ -148,6 +167,7 @@ impl Controller {
                     };
 
                     Row::new(vec![
+                        Cell::from(time),
                         Cell::from(unit.to_string()),
                         Cell::from(process.to_string()),
                         Cell::from(message.to_string()).style(log_style),
@@ -157,6 +177,7 @@ impl Controller {
         )
         .header(header_row)
         .block(block)
+        .column_spacing(5)
         .row_highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol(">> ");
 

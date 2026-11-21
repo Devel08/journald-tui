@@ -1,14 +1,14 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::model::JournalEntry;
 use systemd::journal::OpenOptions;
 
-fn to_entry(entry: &std::collections::BTreeMap<String, String>) -> JournalEntry {
+fn to_entry(entry: &std::collections::BTreeMap<String, String>, timestamp: String) -> JournalEntry {
     let get = |key: &str| entry.get(key).cloned();
 
     JournalEntry {
-        timestamp: get("__REALTIME_TIMESTAMP").unwrap_or_default(),
+        timestamp,
         message: get("MESSAGE").unwrap_or_default(),
         systemd_unit: get("_SYSTEMD_UNIT"),
         process_name: get("_COMM"),
@@ -69,8 +69,17 @@ pub fn start_log_stream(
                     None => true,
                 };
 
-                if should_send && tx.blocking_send(to_entry(&entry)).is_err() {
-                    break;
+                if should_send {
+                    let timestamp = journal
+                        .timestamp()
+                        .ok()
+                        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                        .map(|d| d.as_micros().to_string())
+                        .unwrap_or_default();
+
+                    if tx.blocking_send(to_entry(&entry, timestamp)).is_err() {
+                        break;
+                    }
                 }
             }
             Ok(None) => continue,
