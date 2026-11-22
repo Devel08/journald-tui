@@ -25,7 +25,10 @@ use jiff::{Timestamp, tz::TimeZone};
 use std::time::Duration;
 use tokio::sync::mpsc::Receiver;
 
+use arboard::Clipboard;
+
 pub struct Controller {
+    clipboard: Clipboard,
     search_query: String,
     is_searching: bool,
     global_filter: Arc<Mutex<Option<String>>>,
@@ -43,6 +46,7 @@ enum LoopAction {
 impl Controller {
     pub fn new(rx: Receiver<JournalEntry>) -> Self {
         Self {
+            clipboard: Clipboard::new().unwrap(),
             search_query: String::new(),
             is_searching: false,
             global_filter: Arc::new(Mutex::new(None)),
@@ -117,12 +121,11 @@ impl Controller {
         .style(Style::default().bg(Color::LightBlue).fg(Color::Black));
 
         let widths = [
-            Constraint::Length(19), 
-            Constraint::Max(25),    
-            Constraint::Length(16), 
+            Constraint::Length(19),
+            Constraint::Max(25),
+            Constraint::Length(16),
             Constraint::Fill(1),
         ];
-
 
         let block = Block::default()
             .title(format!(
@@ -141,7 +144,6 @@ impl Controller {
                     self.search_query.is_empty() || log.message.contains(&self.search_query)
                 })
                 .map(|log| {
-
                     // Convert the unix epoch timestamp into human readable one
                     let time = log
                         .timestamp
@@ -267,15 +269,16 @@ impl Controller {
     }
 
     pub fn draw_status_bar(&mut self, f: &mut Frame, area: Rect) {
-        let status_bar =
-            Paragraph::new(" [↑] Up  [↓] Down  [/] Search [G] Global search mode  [q] Quit ")
-                .block(Block::default())
-                .style(
-                    Style::default()
-                        .bg(Color::Gray)
-                        .fg(Color::Black)
-                        .add_modifier(Modifier::BOLD),
-                );
+        let status_bar = Paragraph::new(
+            " [↑] Up  [↓] Down  [/] Search [g] Global search mode [y] Copy message [q] Quit ",
+        )
+        .block(Block::default())
+        .style(
+            Style::default()
+                .bg(Color::Gray)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        );
         f.render_widget(status_bar, area);
     }
 
@@ -342,6 +345,18 @@ impl Controller {
                     self.toggle_global();
                     LoopAction::Continue {
                         should_render: true,
+                    }
+                }
+                KeyCode::Char('y') => {
+                    // Set the clipboard's text to the selected log's message
+                    let _ = self.clipboard.set_text(
+                        self.logs[self.table_state.selected().unwrap_or(0)]
+                            .message
+                            .clone(),
+                    );
+
+                    LoopAction::Continue {
+                        should_render: false,
                     }
                 }
                 KeyCode::Char('/') => {
