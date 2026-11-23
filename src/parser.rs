@@ -4,6 +4,8 @@ use std::time::{Duration, SystemTime};
 use crate::model::JournalEntry;
 use systemd::journal::OpenOptions;
 
+use crate::controller::matches_search_query;
+
 fn to_entry(entry: &std::collections::BTreeMap<String, String>, timestamp: String) -> JournalEntry {
     let get = |key: &str| entry.get(key).cloned();
 
@@ -65,7 +67,15 @@ pub fn start_log_stream(
         match entry_res {
             Ok(Some(entry)) => {
                 let should_send = match &target_filter {
-                    Some(query) => entry.get("MESSAGE").is_some_and(|m| m.contains(query)),
+                    Some(query) => {
+                        let msg = entry.get("MESSAGE").map(String::as_str).unwrap_or("");
+                        let proc = entry
+                            .get("SYSLOG_IDENTIFIER")
+                            .or_else(|| entry.get("_COMM"))
+                            .map(String::as_str);
+                        matches_search_query(msg, proc, query)
+                    }
+
                     None => true,
                 };
 

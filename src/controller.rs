@@ -43,6 +43,59 @@ enum LoopAction {
     Quit,
 }
 
+// ============================================================================
+//                          SEARCH QUERY PARSER
+// ============================================================================
+
+//TODO: make it non-case-sensitive (std's contains() isn't ... )
+
+// Should we move that in model.rs?
+enum SearchQueryProperty<'a> {
+    Message(&'a str),
+    Process(&'a str),
+}
+
+impl<'a> SearchQueryProperty<'a> {
+    fn parse_all(query: &'a str) -> Option<Vec<Self>> {
+        if query.trim().is_empty() {
+            return Some(Vec::new());
+        }
+
+        query
+            .split(',')
+            .map(|part| {
+                let part = part.trim();
+                let (key, val) = part.split_once(':')?;
+                let clean_val = val.trim().trim_matches(|c| c == '\'' || c == '"');
+
+                if clean_val.is_empty() {
+                    return None;
+                }
+
+                match key.trim() {
+                    "message" => Some(Self::Message(clean_val)),
+                    "process" => Some(Self::Process(clean_val)),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+}
+
+pub fn matches_search_query(message: &str, process: Option<&str>, query: &str) -> bool {
+    match SearchQueryProperty::parse_all(query) {
+        Some(properties) => properties.iter().all(|prop| match prop {
+            SearchQueryProperty::Message(msg) => message.contains(msg),
+            SearchQueryProperty::Process(proc) => process.unwrap_or("").contains(proc),
+        }),
+        None => message.contains(query),
+    }
+}
+
+// ============================================================================
+//                          SEARCH QUERY PARSER
+// ============================================================================
+
 impl Controller {
     pub fn new(rx: Receiver<JournalEntry>) -> Self {
         Self {
@@ -141,7 +194,11 @@ impl Controller {
             self.logs
                 .iter()
                 .filter(|log| {
-                    self.search_query.is_empty() || log.message.contains(&self.search_query)
+                    matches_search_query(
+                        &log.message,
+                        log.process_name.as_deref(),
+                        &self.search_query,
+                    )
                 })
                 .map(|log| {
                     // Convert the unix epoch timestamp into human readable one
@@ -202,7 +259,13 @@ impl Controller {
         let Some(log) = self
             .logs
             .iter()
-            .filter(|log| self.search_query.is_empty() || log.message.contains(&self.search_query))
+            .filter(|log| {
+                matches_search_query(
+                    &log.message,
+                    log.process_name.as_deref(),
+                    &self.search_query,
+                )
+            })
             .nth(selected_index)
         else {
             return;
@@ -374,7 +437,11 @@ impl Controller {
                         .logs
                         .iter()
                         .filter(|log| {
-                            self.search_query.is_empty() || log.message.contains(&self.search_query)
+                            matches_search_query(
+                                &log.message,
+                                log.process_name.as_deref(),
+                                &self.search_query,
+                            )
                         })
                         .count();
 
