@@ -51,8 +51,12 @@ enum LoopAction {
 
 // Should we move that in model.rs?
 enum SearchQueryProperty<'a> {
-    Message(&'a str),
+    #[allow(dead_code)]
+    Timestamp(&'a str),
+    Hostname(&'a str),
+    Unit(&'a str),
     Process(&'a str),
+    Message(&'a str),
 }
 
 impl<'a> SearchQueryProperty<'a> {
@@ -75,6 +79,9 @@ impl<'a> SearchQueryProperty<'a> {
                 match key.trim() {
                     "message" => Some(Self::Message(clean_val)),
                     "process" => Some(Self::Process(clean_val)),
+                    "unit" => Some(Self::Unit(clean_val)),
+                    "timestamp" => Some(Self::Timestamp(clean_val)),
+                    "hostname" => Some(Self::Hostname(clean_val)),
                     _ => None,
                 }
             })
@@ -82,11 +89,20 @@ impl<'a> SearchQueryProperty<'a> {
     }
 }
 
-pub fn matches_search_query(message: &str, process: Option<&str>, query: &str) -> bool {
+pub fn matches_search_query(
+    message: &str,
+    process: Option<&str>,
+    unit: Option<&str>,
+    hostname: Option<&str>,
+    query: &str,
+) -> bool {
     match SearchQueryProperty::parse_all(query) {
         Some(properties) => properties.iter().all(|prop| match prop {
             SearchQueryProperty::Message(msg) => message.contains(msg),
             SearchQueryProperty::Process(proc) => process.unwrap_or("").contains(proc),
+            SearchQueryProperty::Unit(systemd_unit) => unit.unwrap_or("").contains(systemd_unit),
+            SearchQueryProperty::Hostname(host) => hostname.unwrap_or("").contains(host),
+            &SearchQueryProperty::Timestamp(_) => todo!(),
         }),
         None => message.contains(query),
     }
@@ -197,6 +213,8 @@ impl Controller {
                     matches_search_query(
                         &log.message,
                         log.process_name.as_deref(),
+                        log.systemd_unit.as_deref(),
+                        log.hostname.as_deref(),
                         &self.search_query,
                     )
                 })
@@ -263,6 +281,8 @@ impl Controller {
                 matches_search_query(
                     &log.message,
                     log.process_name.as_deref(),
+                    log.systemd_unit.as_deref(),
+                    log.hostname.as_deref(),
                     &self.search_query,
                 )
             })
@@ -312,7 +332,7 @@ impl Controller {
                 Span::raw(hostname),
             ]),
             Line::from(vec![
-                Span::styled("Type: ", label_style),
+                Span::styled("Priority: ", label_style),
                 Span::raw(type_str),
                 Span::raw("     "),
                 Span::styled("Process: ", label_style),
@@ -440,6 +460,8 @@ impl Controller {
                             matches_search_query(
                                 &log.message,
                                 log.process_name.as_deref(),
+                                log.systemd_unit.as_deref(),
+                                log.hostname.as_deref(),
                                 &self.search_query,
                             )
                         })

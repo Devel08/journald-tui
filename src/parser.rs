@@ -73,7 +73,9 @@ pub fn start_log_stream(
                             .get("SYSLOG_IDENTIFIER")
                             .or_else(|| entry.get("_COMM"))
                             .map(String::as_str);
-                        matches_search_query(msg, proc, query)
+                        let unit = entry.get("_SYSTEMD_UNIT").map(String::as_str);
+                        let hostname = entry.get("_HOSTNAME").map(String::as_str);
+                        matches_search_query(msg, proc, unit, hostname, query)
                     }
 
                     None => true,
